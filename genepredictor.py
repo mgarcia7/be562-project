@@ -8,50 +8,41 @@ import re
 from collections import Counter, defaultdict
 
 class PositionState:
-	base_dict = {"A":0, "G": 1, "C":2, "T":3, "-":4}
+	nucl = ["A", "G", "C", "T", "-"]
 	# Match emission probability
-		#
+		# {"A":0.5, "G": 0.7, "C":0.1, "T":0.6}
+
 	# Delete emission probability
-	# Insertion emission probability
+	delete_dict = {"A":0, "G": 0, "C":0, "T":0, "-":1}
 
-	def __init__(self, sequences):
-		self.PWM = get_PFM(sequences)
-		self.match = create_match(sequences,PFM)
-		self.delete = create_delete(sequences,PFM)
-		self.insert = create_insert(sequences,PFM)
+	# Insertion emission probability, background prob of nucleotide
+		# {"A:0.2"}
+	def __init__(self, bases,PFM, pos):
+		self.pos = pos
+		match_dict = create_match(bases,PFM)
+		insert_dict = create_insert(bases,PFM)
 
-	def create_match(sequences):
+	def create_match(bases,PFM):
 		match_dict = {}
-		num_seqs = len(sequences)
-		for pos,bases in enumerate(zip(*sequences)):
-			if PWM[4][pos] > num_seqs/2: # no match state at this position
-				continue
-			else
-				
+		num_seqs = len(bases)
+		num_gaps = bases.count("_")
 
+		if num_gaps >= num_seqs/2: 	# match state includes only colums where there are bases in at least half the sequences (no gaps)
+			match_dict = None
+		else
+			for idx in range(4):
+				match_dict[nucl[idx]] = PFM[nucl[idx]][pos]/num_seqs # "add-one rule"
 
-		# match state includes only colums where there are bases in at least half the sequences (no gaps)
-		
-		pass
+		return match_dict
 
-	def create_delete(sequences):
-		pass
+	# insert is the background probability of nucleotide (in whole genome or the conserved region??)	
+	def create_insert(bases,PFM):
+		insert_dict = {}
+		length_seq = PFM.shape()[1]
+		for idx in range(4):
+			insert_dict[nucl[idx]] = PFM[idx].sum()/length_seq
 
-	def create_insert(sequences):
-		pass
-
-	def get_PWM(sequences):
-		# columns = position
-		# rows = base_dict
-		PFM = np.zeros((4,len(sequences[0])))
-		for pos,bases in enumerate(zip(*sequences)):
-			PFM[0][pos] = bases.count("A")
-			PFM[1][pos] = bases.count("G")
-			PFM[2][pos] = bases.count("C")
-			PFM[3][pos] = bases.count("T")
-			PFM[4][pos] = bases.count("-")
-
-		return PFM
+		return insert_dict
 
 
 
@@ -68,7 +59,24 @@ class pHMM:
 		pass
 
 	def create_emission(sequences):
-		pass
+		emission = []
+		for pos,bases in enumerate(zip(*sequences)): # bases = tuple with all the letters at the position in it
+			emission.append(PositionState(bases,PFM,pos))
+
+		return emission
+
+	def get_PFM(sequences):
+		PFM = np.zeros((4,len(sequences[0])))
+		for pos,bases in enumerate(zip(*sequences)): # list of tuples w/ 0th tuple being all the letters in 0th position, etc
+			PFM[0][pos] = bases.count("A")
+			PFM[1][pos] = bases.count("G")
+			PFM[2][pos] = bases.count("C")
+			PFM[3][pos] = bases.count("T")
+			PFM[4][pos] = bases.count("-")
+
+		return PFM
+
+
 
 
 class GeneSequence:
@@ -130,7 +138,7 @@ def create_pHMMs(gene_dict):
 
 	return pHMM_dict
 
-def score_sequence(region_seq):
+def score_sequence(region_seq): # viterbi or forward
 	# input = conserved region
 	# get a score using every pHMM
 	# output = a dict with gene name as key, and val is the score
