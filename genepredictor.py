@@ -5,18 +5,33 @@
 ################################################################
 import numpy as np
 import re
+from collections import Counter, defaultdict
 
 class PositionState:
+	base_dict = {"A":0, "G": 1, "C":2, "T":3, "-":4}
 	# Match emission probability
+		#
 	# Delete emission probability
 	# Insertion emission probability
 
 	def __init__(self, sequences):
-		self.match = create_match(sequences)
-		self.delete = create_delete(sequences)
-		self.insert = create_insert(sequences)
+		self.PWM = get_PFM(sequences)
+		self.match = create_match(sequences,PFM)
+		self.delete = create_delete(sequences,PFM)
+		self.insert = create_insert(sequences,PFM)
 
 	def create_match(sequences):
+		match_dict = {}
+		num_seqs = len(sequences)
+		for pos,bases in enumerate(zip(*sequences)):
+			if PWM[4][pos] > num_seqs/2: # no match state at this position
+				continue
+			else
+				
+
+
+		# match state includes only colums where there are bases in at least half the sequences (no gaps)
+		
 		pass
 
 	def create_delete(sequences):
@@ -24,6 +39,20 @@ class PositionState:
 
 	def create_insert(sequences):
 		pass
+
+	def get_PWM(sequences):
+		# columns = position
+		# rows = base_dict
+		PFM = np.zeros((4,len(sequences[0])))
+		for pos,bases in enumerate(zip(*sequences)):
+			PFM[0][pos] = bases.count("A")
+			PFM[1][pos] = bases.count("G")
+			PFM[2][pos] = bases.count("C")
+			PFM[3][pos] = bases.count("T")
+			PFM[4][pos] = bases.count("-")
+
+		return PFM
+
 
 
 class pHMM:
@@ -51,51 +80,55 @@ class GeneSequence:
 
 		for match in iterator:
 			text = match.group()
+			print(text)
 			if "gene=" in text:
-				gene_name = text[5:]
+				self.gene_name = text[5:]
 			if "location=" in text:
-				location = re.sub('[^0-9]\.','', a) #get rid of non-numeric and non-periods
-				location = tuple(text.split(".."))
+				self.location = re.sub('[^0-9]\.','', text) #get rid of non-numeric and non-periods
+				self.location = tuple(text.split(".."))
 
 
 def read_in_annotated(filename, p): # p is the compiled pattern object
-	# Read in line by line, save sequence, check every 5 if the 5th one is dmDA
-		# if not, clear list and start over
-		# if so, save list and do the next 5 lines after dmDa
 	current_gene_sequence = None
 	gene_sequences = []
 
 	with open(filename,'r') as f:
+		print("opened file")
 		count = 0
 		for line in f:
 			if ">lcl" in line and "gene=" in line: # start of new annotated
 				iterator = p.finditer(line)
 				current_gene_sequence = GeneSequence(iterator,filename.split("_")[0])
-
-			else if ">lcl" in line and "gene=" not in line:
+				gene_sequences.append(current_gene_sequence)
+			elif ">lcl" in line and "gene=" not in line:
 				current_gene_sequence = None
 
-			if current_gene_sequence is not None:
-				current_gene_sequence.sequence += line
+			if current_gene_sequence is not None and ">lcl" not in line:
+				current_gene_sequence.sequence += line[:-1] #don't include \n
 				
 
-
-
 	# Return a list of the genes surrounding dmDa for a genome
+	return gene_sequences
 
-	pass
-
-def create_gene_dict(genome_sequences)
+def create_gene_dict(gene_list):
+	gene_dict = defaultdict(list)
+	for gene in gene_list:
+		gene_dict[gene.gene_name].append(gene)
 	# input = list of all sequences
-	# sort them by gene name and add them to a dict
 	# output = a dict where the key is the name of gene and the val is a list of all the gene sequences
-	pass
 
-def create_pHMMs(gene_sequences):
+	#maybe remove the genes that only appear once
+	return gene_dict
+
+def create_pHMMs(gene_dict):
 	# input = dict from above function
 	# for each key-val pair, align the sequences and create a pHMM
 	# output = dict where name of gene is the key, and the val is the pHMM
-	pass
+	pHMM_dict = defaultdict(list)
+	for k,v in gene_dict.items():
+		pHMM_dict[k].append(pHMM(v))
+
+	return pHMM_dict
 
 def score_sequence(region_seq):
 	# input = conserved region
@@ -113,11 +146,14 @@ def create_unsorted_gene_list():
 	# read all files in annotation folder
 	for file in filenames:
 		gene_list = read_in_annotated(path+file,p)
-		unsorted_gene_list.append(gene_list)
+		unsorted_gene_list.extend(gene_list)
 
 	# get total gene list to worry about
 	# output = unsorted gene list
 	return unsorted_gene_list
+
+unsorted_gene_list = create_unsorted_gene_list()
+gene_dict = create_gene_dict(unsorted_gene_list)
 
 # Create profile HMM model of a gene
 	# list - gene = [seq1, seq2, seq3]
