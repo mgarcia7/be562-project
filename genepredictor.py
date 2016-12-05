@@ -6,6 +6,7 @@
 import numpy as np
 import re
 from collections import Counter, defaultdict
+import os
 
 class PositionState:
 	nucl = ["A", "G", "C", "T", "-"]
@@ -145,7 +146,8 @@ def score_sequence(region_seq): # viterbi or forward
 
 def create_unsorted_gene_list():
 	path = "data/annotations/"
-	filenames = ["Dshibae_annotated.txt", "Oantarcticus307_annotated.txt", "Oarcticus238_annotated.txt", "Rmobilis_annotated.txt", "Rpomeroyi_annotated.txt"]
+	filenames = [file for file in next(os.walk(path))[2] if ".txt" in file] #["Dshibae_annotated.txt", "Oantarcticus307_annotated.txt", "Oarcticus238_annotated.txt", "Rmobilis_annotated.txt", "Rpomeroyi_annotated.txt"]
+	
 	unsorted_gene_list = []
 
 	p = re.compile("(?<=\[).+?(?=\])") #regex expression to match things in brackets

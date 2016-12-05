@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 unsorted_gene_list = gp.create_unsorted_gene_list()
 #gene_dict = gp.create_gene_dict(unsorted_gene_list)
 
-filenames = ["Dshibae", "Oantarcticus307", "Oarcticus238", "Rmobilis", "Rpomeroyi"]
+filenames = ["Dshibae", "Oantarcticus307", "Oarcticus238", "Rmobilis", "Rpomeroyi", "Roseovarius217", "Rlitoralis", "Rdentrificans", "JannaschiaCCS1"]
 
 outfile = open('transformed.csv', 'w')
 
