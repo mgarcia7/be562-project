@@ -29,7 +29,7 @@ class PositionState:
 
 		if num_gaps >= num_seqs/2: 	# match state includes only colums where there are bases in at least half the sequences (no gaps)
 			match_dict = None
-		else
+		else:
 			for idx in range(4):
 				match_dict[nucl[idx]] = PFM[nucl[idx]][pos]/num_seqs # "add-one rule"
 
@@ -77,8 +77,6 @@ class pHMM:
 		return PFM
 
 
-
-
 class GeneSequence:
 	def __init__(self, iterator, genome):
 		self.sequence = ""
@@ -92,9 +90,8 @@ class GeneSequence:
 			if "gene=" in text:
 				self.gene_name = text[5:]
 			if "location=" in text:
-				self.location = re.sub('[^0-9]\.','', text) #get rid of non-numeric and non-periods
-				self.location = tuple(text.split(".."))
-
+				 #get rid of non-numeric and non-periods
+				self.location = re.sub(r"[^0-9\.]",r"", text).split("..")
 
 def read_in_annotated(filename, p): # p is the compiled pattern object
 	current_gene_sequence = None
@@ -106,7 +103,8 @@ def read_in_annotated(filename, p): # p is the compiled pattern object
 		for line in f:
 			if ">lcl" in line and "gene=" in line: # start of new annotated
 				iterator = p.finditer(line)
-				current_gene_sequence = GeneSequence(iterator,filename.split("_")[0])
+				genome = filename.split("/")[-1]
+				current_gene_sequence = GeneSequence(iterator,genome.split("_")[0])
 				gene_sequences.append(current_gene_sequence)
 			elif ">lcl" in line and "gene=" not in line:
 				current_gene_sequence = None
@@ -160,8 +158,10 @@ def create_unsorted_gene_list():
 	# output = unsorted gene list
 	return unsorted_gene_list
 
+'''
 unsorted_gene_list = create_unsorted_gene_list()
 gene_dict = create_gene_dict(unsorted_gene_list)
+'''
 
 # Create profile HMM model of a gene
 	# list - gene = [seq1, seq2, seq3]
@@ -175,6 +175,6 @@ gene_dict = create_gene_dict(unsorted_gene_list)
 
 # Get probability of gene name based on sequence using profile HMM
 
-# Get gene name from BLAST and get e value
+# Get gene name from BLAST and get e-value
 
 # Combine and predict a gene name
