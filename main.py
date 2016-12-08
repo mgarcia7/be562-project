@@ -1,15 +1,16 @@
 import sys
+import os
 import random
 import msa_tools
 
 def main():
 
 	# parse command line
-    if len(sys.argv) < 3:
-        print("Usage: {0} <FASTA 1> <FASTA 2>".format(sys.argv[0]))
-        sys.exit(1)
+    #if len(sys.argv) < 3:
+    #    print("Usage: {0} <FASTA 1> <FASTA 2>".format(sys.argv[0]))
+    #    sys.exit(1)
 
-    files = [n for n in sys.argv[1:]]
+    files = ["/data/genomes/" + n for n in os.listdir("/data/genomes")]
 
     conserved = []
 

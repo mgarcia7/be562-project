@@ -105,7 +105,7 @@ class Alignment(object):
 
 
     def traceback(self, organism1, seq1, d1, organism2, seq2, d2, F, TB):
-        max_iter = 5
+        max_iter = 3
         iterations = 0
 
         s1 = ""
@@ -195,7 +195,7 @@ class Alignment(object):
                     continue
                 seq.append(line.rstrip().upper())
 
-        return filename[:(len(filename)-len(".fasta"))], "".join(seq)
+        return filename.split("/")[3].split(".")[0], "".join(seq)
 
 
 """
