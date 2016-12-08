@@ -20,14 +20,12 @@ def locseqalignDP(seq1, seq2, subst_matrix, gap_penalty):
     # initialize dynamic programming table for Needleman-Wunsch alignment
     # (Durbin p.20)
     for i in range(1, len(seq1)+1):
-        F[i][0] = 0
         TB[i][0] = PTR_GAP2  # indicates a gap in seq2
     for j in range(1, len(seq2)+1):
-        F[0][j] = 0
         TB[0][j] = PTR_GAP1  # indicates a gap in seq1
 
-    for i in range(1, len(seq1)+1):
-        for j in range(1, len(seq2)+1):
+    for i in range(1,5): #len(seq1)+1):
+        for j in range(1,5): #len(seq2)+1):
             # Determine index of substitution matrix
             val_i = base_idx[seq1[i-1]]
             val_j= base_idx[seq2[j-1]]
@@ -83,7 +81,7 @@ def traceback(seq1, seq2, TB, iMax, jMax):
     elif s2.startswith("-"):
         iStart = iStart + 1
         jStart = j
-    else
+    else:
         iStart = i + 1
         jStart = j + 1    
     return s1, s2, iStart, jStart
@@ -104,10 +102,10 @@ def readSeq(filename):
 # Substituation matrix and gap_penalty
 S = [
     # A   G   C   T
-    [0, 2, 2, 1],  # A
-    [2, 0, 1, 2],  # G
-    [2, 1, 0, 2],  # C
-    [1, 2, 2, 0]   # T
+    [3, -1, -2, -2],  # A
+    [-1, 3, -2, -2],  # G
+    [-2, -2, 3, -1],  # C
+    [-2, -2, -1, 3]   # T
 ]
 gap_penalty = 4
 
@@ -120,6 +118,7 @@ def main():
 
     file1 = sys.argv[1]
     file2 = sys.argv[2]
+    writeFile = sys.argv[3]
     
     #seq1 = sys.argv[1]
     #seq2 = sys.argv[2]
@@ -127,22 +126,26 @@ def main():
     seq2 = readSeq(file2)
 
     score, F, TB, iMax, jMax = locseqalignDP(seq1, seq2, S, gap_penalty)
-
-    print("Score: {0}".format(score))
-
+    wFile = open(writeFile,'w')
+    wFile.write("Score: {0}".format(score))
+    
     s1, s2, iStart, jStart = traceback(seq1, seq2, TB, iMax, jMax)
-    print(s1)
-    print(s2)
+    targetFile.write("\n")
+    targetFile.write(s1)
+    targetFile.write("\n")
+    targetFile.write(s2)
+    targetFile.write("\n")
 
-    print('Start Position')
-    print("Sequence 1: {0}".format(iStart))
-    print("Sequence 2: {0}".format(jStart))
+    targetFile.write('Start Position     ')
+    targetFile.write("Sequence 1: {0}     ".format(iStart))
+    targetFile.write("Sequence 2: {0}".format(jStart))
 
-    print('Relative Start Position')
+    targetFile.write("\n")
+    targetFile.write('Relative Start Position     ')
     iRelStart = iStart/len(seq1)
     jRelStart = jStart/len(seq2)
-    print("Sequence 1: {0}".format(iRelStart))
-    print("Sequence 2: {0}".format(jRelStart))
+    targetFile.write("Sequence 1: {0}     ".format(iRelStart))
+    targetFile.write("Sequence 2: {0}".format(jRelStart))
 
 if __name__ == "__main__":
     main()
