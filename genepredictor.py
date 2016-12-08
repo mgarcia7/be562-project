@@ -7,6 +7,14 @@ import numpy as np
 import re
 from collections import Counter, defaultdict
 import os
+from math import log, floor
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.Alphabet import generic_dna
+import Bio.SeqIO as SeqIO
+from Bio.Align.Applications import ClustalOmegaCommandline
+from Bio import AlignIO
+
 
 class PositionState:
 	nucl = ["A", "G", "C", "T", "-"]
@@ -18,65 +26,99 @@ class PositionState:
 
 	# Insertion emission probability, background prob of nucleotide
 		# {"A:0.2"}
-	def __init__(self, bases,PFM, pos):
+	def __init__(self, bases,PFM, pos,len_seq):
+		self.len_seq = len_seq
 		self.pos = pos
-		match_dict = create_match(bases,PFM)
-		insert_dict = create_insert(bases,PFM)
+		self.match_dict = self.create_match(bases,PFM)
+		self.insert_dict = self.create_insert(bases,PFM)
 
-	def create_match(bases,PFM):
+	def create_match(self,bases,PFM):
 		match_dict = {}
 		num_seqs = len(bases)
-		num_gaps = bases.count("_")
-
-		if num_gaps >= num_seqs/2: 	# match state includes only colums where there are bases in at least half the sequences (no gaps)
-			match_dict = None
-		else:
-			for idx in range(4):
-				match_dict[nucl[idx]] = PFM[nucl[idx]][pos]/num_seqs # "add-one rule"
+		for idx in range(4):
+			match_dict[self.nucl[idx]] = PFM[idx][self.pos]/num_seqs + 0.01 # implement the "add-one rule"
 
 		return match_dict
 
 	# insert is the background probability of nucleotide (in whole genome or the conserved region??)	
-	def create_insert(bases,PFM):
+	def create_insert(self,bases,PFM):
 		insert_dict = {}
-		length_seq = PFM.shape()[1]
+		num_seqs = len(bases)
 		for idx in range(4):
-			insert_dict[nucl[idx]] = PFM[idx].sum()/length_seq
+			insert_dict[self.nucl[idx]] = PFM[idx][self.pos].sum()/num_seqs + 0.01
 
 		return insert_dict
 
 
-
 class pHMM:
+	# match state as defined
+	# insert state if not match state
+	# delete state if it's technically a match or insert state but that particular sequence has a gap
 	# transition probabilities btw states
 		# 3x3 Matrix
+			# M D I
+		# M
+		# D
+		# I
 	# emission probabilities by position
 
 	def __init__(self, sequences):
-		self.transition = create_transition(sequences)
-		self.emission = create_emission(sequences)
+		self.PFM = get_PFM(sequences)
+		self.emission, self.states = self.create_emission(sequences)
+		self.transition = self.create_transition(sequences)
+		self.transition += 0.01
 
-	def create_transition(sequences):
-		pass
+	def create_transition(self, sequences):
+		state_dict = {"M":0, "D":1, "I":2}
+		transition = np.zeros((3,3))
+	
+		for seq in sequences:
+			current_states_list = self.states[:] #copy of states
+			for pos,base in enumerate(seq): #assume state -1 is a match
+				if pos == 0:
+					prev = "M"
+				else:
+					if base == "-":
+						current_states_list[pos] = "D"
 
-	def create_emission(sequences):
+					prev = current_states_list[pos-1]
+					current = current_states_list[pos]
+
+					transition[state_dict[prev]][state_dict[current]] += 1
+
+		return transition/(transition.sum(axis=0)+0.01) # returns normalized transition matrix by col
+ 
+	def create_emission(self, sequences):
 		emission = []
+		states = []
 		for pos,bases in enumerate(zip(*sequences)): # bases = tuple with all the letters at the position in it
-			emission.append(PositionState(bases,PFM,pos))
+			num_gaps = 0
+			for base in bases:
+				if base == "-":
+					num_gaps+=1
 
-		return emission
+			if num_gaps >= floor(len(sequences)/2.0): #beginning state, end state, match states need to not have many gaps
+				states.append("I")
+				continue
+			else:
+				states.append("M")
+				emission.append(PositionState(bases,self.PFM,pos,len(sequences[0])))
 
-	def get_PFM(sequences):
-		PFM = np.zeros((4,len(sequences[0])))
-		for pos,bases in enumerate(zip(*sequences)): # list of tuples w/ 0th tuple being all the letters in 0th position, etc
-			PFM[0][pos] = bases.count("A")
-			PFM[1][pos] = bases.count("G")
-			PFM[2][pos] = bases.count("C")
-			PFM[3][pos] = bases.count("T")
-			PFM[4][pos] = bases.count("-")
+		#emission.append(None) # signals end state
 
-		return PFM
+		return emission,states
 
+
+def get_PFM(sequences):
+	PFM = np.zeros((5,len(sequences[0])))
+	for pos,bases in enumerate(zip(*sequences)): # list of tuples w/ 0th tuple being all the letters in 0th position, etc
+		PFM[0][pos] = bases.count("A")
+		PFM[1][pos] = bases.count("G")
+		PFM[2][pos] = bases.count("C")
+		PFM[3][pos] = bases.count("T")
+		PFM[4][pos] = bases.count("-")
+
+	return PFM
 
 class GeneSequence:
 	def __init__(self, iterator, genome):
@@ -87,23 +129,20 @@ class GeneSequence:
 
 		for match in iterator:
 			text = match.group()
-			print(text)
 			if "gene=" in text:
 				self.gene_name = text[5:]
 			if "location=" in text:
-				 #get rid of non-numeric and non-periods
-				self.location = re.sub(r"[^0-9\.]",r"", text).split("..")
+				self.location = re.sub(r"[^0-9\.]",r"", text).split("..") #get rid of non-numeric and non-periods
 
-def read_in_annotated(filename, p): # p is the compiled pattern object
+def read_in_annotated(filename, pattern): # p is the compiled pattern object
 	current_gene_sequence = None
 	gene_sequences = []
 
 	with open(filename,'r') as f:
-		print("opened file")
 		count = 0
 		for line in f:
 			if ">lcl" in line and "gene=" in line: # start of new annotated
-				iterator = p.finditer(line)
+				iterator = pattern.finditer(line)
 				genome = filename.split("/")[-1]
 				current_gene_sequence = GeneSequence(iterator,genome.split("_")[0])
 				gene_sequences.append(current_gene_sequence)
@@ -131,18 +170,73 @@ def create_pHMMs(gene_dict):
 	# input = dict from above function
 	# for each key-val pair, align the sequences and create a pHMM
 	# output = dict where name of gene is the key, and the val is the pHMM
-	pHMM_dict = defaultdict(list)
+	pHMM_dict = dict()
+
 	for k,v in gene_dict.items():
-		pHMM_dict[k].append(pHMM(v))
+		if len(v) >= 3:
+			k = "ureA"
+			v = gene_dict[k]
+			aligned = multiseqalign(k,v)
+			print("Creating ", k, " pHMM...")
+			pHMM_dict[k] = pHMM(aligned)
+			print("Done creating pHMM")
+			break
+	
+	'''
+	aligned = ["AG---C","AGAG-C", "AG-AAG", "-GAAAC", "AG---C"]
+	pHMM_dict["test"] = pHMM(aligned)
+	'''
 
 	return pHMM_dict
 
-def score_sequence(region_seq): # viterbi or forward
+def score_sequence(region_seq): # viterbi
 	# input = conserved region
 	# get a score using every pHMM
+	pHMM_dict = create_pHMMs(gene_dict)
+	score_dict = dict()
+	for gene_name, pHMM in pHMM_dict.items():
+		print("Scoring w", gene_name, "model...")
+		score_dict[gene_name] = viterbi(pHMM,region_seq)
+		print("Done scoring")
 	# output = a dict with gene name as key, and val is the score
-	pass
+	return score_dict
 
+def viterbi(pHMM, sequence):
+	N = len(pHMM.states) # number of states
+	L = len(sequence) #number of nucleotides
+	em = pHMM.emission
+	tr = pHMM.transition
+
+
+	V = np.zeros((L,N)) #cols = states, rows = seq
+						# V[1][1] = max()
+	current_state_list = [0]
+	count = 0
+	for pos in range(L):
+		if pos == 0:
+			Vprev = [1, 0, 0]
+		else:
+			Vprev = V[pos-1]
+
+		if current_state_list[-1] == 0:
+			current_state_em = pHMM.emission[count]
+			count += 1
+
+		base = sequence[pos]
+		ran = [current_state_em.match_dict, current_state_em.delete_dict, current_state_em.insert_dict]
+
+		for k in range(3): #match,delete,insert
+			emprob = ran[k][base]
+			prev = [prob + log(tr[k][state_num]+0.01) for state_num,prob in enumerate(Vprev)]
+		
+		V[pos][k] = log(emprob+0.01) + np.argmax(prev)
+
+		
+		index_prev = np.argmax(V[-1])
+		current_state_list.append(index_prev)
+
+
+	return max(V[-1])
 
 def create_unsorted_gene_list():
 	path = "data/annotations/"
@@ -160,10 +254,32 @@ def create_unsorted_gene_list():
 	# output = unsorted gene list
 	return unsorted_gene_list
 
-'''
+def multiseqalign(gene_name,sequences):
+	in_file = "data/alignments/unaligned.fasta"
+	out_file = "data/alignments/aligned" + "_" + gene_name + ".fasta"
+
+	if not os.path.isfile(out_file):
+		print("Aligning ", gene_name, "....")
+		# Write my sequences to a fasta file
+		records = (SeqRecord(Seq(gene.sequence,generic_dna), id=str(index), name="Test", description="Test") for index,gene in enumerate(sequences) )
+
+		with open(in_file, 'w') as handle:
+			SeqIO.write(records, handle, "fasta")
+
+		clustalomega_cline = ClustalOmegaCommandline(infile=in_file, outfile=out_file, auto=True, force=True)
+		clustalomega_cline()
+		print("Aligned")
+
+	alignment = AlignIO.read(out_file,format="fasta")
+	return [str(record.seq) for record in alignment]
+
+
 unsorted_gene_list = create_unsorted_gene_list()
 gene_dict = create_gene_dict(unsorted_gene_list)
-'''
+#phmm_dict = create_pHMMs(gene_dict)
+score_dict = score_sequence('''ATGGCCAGCATCTTCCCGTCCCGCCGGGTCCGGCGCACACCTTTTTCCGCCGGTGTCGAGGCGGCCGGGGTCAAGGGCTATACCGTCTACAATCACATGTTGCTGCCCACGGTGTTCGACAGCCTGCAGGCCGATTGCGCCCATCTGAAGGAACATGTGCAGGTCTGGGACGTGGCCTGCGAGCGGCAGGTCAGCATCCAGGGGCCCGACGCGCTGCGGCTGATGAAGCTGATCAGCCCGCGCGACATGGACCGGATGGCCGATGACCAGTGTTACTACGTGCCCACGGTCGATCATCGTGGCGGCATGCTGAACGATCCGGTGGCGGTGAAACTGGCCGCCGATCATTACTGGCTGTCGCTGGCCGATGGCGACCTGCTGCAATTCGGGCTGGGGATTGCGATCGCCCGGGGCTTCGAGTCGAGATCGTCGAACCCGATGTCTCGCCGCTGGCCGTGCAGGGACCCAGGGCCGACGATCTGATGGCGCGGGTCTTTGGCGAGGCGGTGCGCGATATCCGCTTTTTCCGCTACAAGCGGCTGGCCTTTCAGGGAGTCGAGCTTGTGGTGGCGCGCTCAGGCTGGTCGAAACAGGGCGGCTTCGAGATCTATGTCGAGGGTTCGGAACTGGGCATGCCGCTGTGGAACGCGCTGTTTGCCGCCGGTGCGGACCTGAACGTGCGCGCGGGTTGCCCCAACAATATCGAGCGCGTCGAGAGCGGGTTGTTGAGCTATGGCAACGACATGACCCGCGAGAACACGCCGTATGAATGCGGCCTGGGTAAGTTCTGCAATTCGCCCGAGGACTATATCGGCAAGGCAGCACTGGCCGAACAGGCCAAGAACGGACCGGCGCGCCAGATCCGGGCACTGGTGATCGGTGGCGAGATTCCGCCCTGTCAGGATGCCTGGCCGCTGCTGGCCGACGGTCGCCAGGTGGGGCAGGTGGGGTCAGCGATCCATTCCCCTGAATTCGGCGTGAATGTCGCGATCGGCATGGTGGATCGCAGCCATTGGGCGCCGGGCACCGGGATGGAAGTGGAAACGCCCGACGGCATGCGGCCGGTTACGGTGCGCGAGGGGTTCTGGCGTTAA''')
+for k,v in score_dict.items():
+	print(k, ": ", v)
 
 # Create profile HMM model of a gene
 	# list - gene = [seq1, seq2, seq3]
