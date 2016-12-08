@@ -50,13 +50,13 @@ class Conserved(object):
 class Alignment(object):
 
     def __init__(self, file_1, file_2):
-        #assuming 4000bp were allowed on either side of organism's DmdA
+        #assuming 5000bp were allowed on either side of organism's DmdA
         self.organism1, self.seq1 = self.read_fasta(file_1)
         self.organism2, self.seq2 = self.read_fasta(file_2)
-        self.seq1_left = self.seq1[:4000]
-        self.seq1_right = self.seq1[-4000:]
-        self.seq2_left = self.seq2[:4000]
-        self.seq2_right = self.seq2[-4000:]
+        self.seq1_left = self.seq1[:5000]
+        self.seq1_right = self.seq1[-5000:]
+        self.seq2_left = self.seq2[:5000]
+        self.seq2_right = self.seq2[-5000:]
         self.conserved = self.get_conserved(self.organism1, self.organism2,
                                             self.seq1_left, self.seq1_right,
                                             self.seq2_left, self.seq2_right)
@@ -146,7 +146,7 @@ class Alignment(object):
 
             #Construct Region objects with name of organism, conserved
             #sequence, and starting and endoing points of that conserved
-            #region in that 4000bp flanking region
+            #region in that 5000bp flanking region
             #Construct Conserved object with these Regions and append
             region_1 = Region(organism1, s1, min_1 + d1, max_1 + d1)
             region_2 = Region(organism2, s2, min_2 + d2, max_2 + d2)
@@ -166,21 +166,21 @@ class Alignment(object):
     def get_conserved(self, organism1, organism2, seq1_left, seq1_right, seq2_left, seq2_right):
         #distances passed to traceback are from the left side of the fragment that was passed
         #calculated as such: sequence has length l with organism's copy of lyase
-        #with 4000bp on both sides. l - 4000 = length of DmdA. so beginning of conserved
-        #regions coming from right flank start at l - 4000 + 4000, or l - 4000 from the
+        #with 5000bp on both sides. l - 5000 = length of DmdA. so beginning of conserved
+        #regions coming from right flank start at l - 5000 + 5000, or l - 5000 from the
         #left side of fragment.
         conserved = []
         F, TB = self.Smith_Waterman(seq1_left, seq2_left)
         for i in self.traceback(organism1, seq1_left, 0, organism2, seq2_left, 0, F, TB):
             conserved.append(i)
         F, TB = self.Smith_Waterman(seq1_left, seq2_right)
-        for i in self.traceback(organism1, seq1_left, 0, organism2, seq2_right, len(self.seq2)-4000, F, TB):
+        for i in self.traceback(organism1, seq1_left, 0, organism2, seq2_right, len(self.seq2)-5000, F, TB):
             conserved.append(i)
         F, TB = self.Smith_Waterman(seq1_right, seq2_left)
-        for i in self.traceback(organism1, seq1_right, len(self.seq1)-4000, organism2, seq2_left, 0, F, TB):
+        for i in self.traceback(organism1, seq1_right, len(self.seq1)-5000, organism2, seq2_left, 0, F, TB):
             conserved.append(i)
         F, TB = self.Smith_Waterman(seq1_right, seq2_right)
-        for i in self.traceback(organism1, seq1_right, len(self.seq1)-4000, organism2, seq2_right, len(self.seq2)-4000, F, TB):
+        for i in self.traceback(organism1, seq1_right, len(self.seq1)-5000, organism2, seq2_right, len(self.seq2)-5000, F, TB):
             conserved.append(i)
         return conserved
 

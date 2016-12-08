@@ -25,7 +25,8 @@ def main():
 
 	    conserved.append(Alignment(files[a], files[b]).conserved)
 
-
+	#filter results to those of significant length
+	conserved = [c for c in conserved if (c.seq1.ending - c.seq1.beginning > 500)]
 
 if __name__ == "__main__":
 	main()
