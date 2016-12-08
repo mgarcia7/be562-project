@@ -37,7 +37,7 @@ class PositionState:
 		match_dict = {}
 		num_seqs = len(bases)
 		for idx in range(4):
-			match_dict[self.nucl[idx]] = PFM[idx][self.pos]/num_seqs + 0.01 # implement the "add-one rule"
+			match_dict[self.nucl[idx]] = (PFM[idx][self.pos]+1)/(num_seqs+4) # implement the "add-one rule"
 
 		return match_dict
 
@@ -45,8 +45,10 @@ class PositionState:
 	def create_insert(self,bases,PFM):
 		insert_dict = {}
 		num_seqs = len(bases)
+
+
 		for idx in range(4):
-			insert_dict[self.nucl[idx]] = PFM[idx][self.pos].sum()/num_seqs + 0.01
+			insert_dict[self.nucl[idx]] = (PFM[idx][self.pos].sum()+1)/(num_seqs + 4)
 
 		return insert_dict
 
@@ -66,7 +68,6 @@ class pHMM:
 		self.PFM = get_PFM(sequences)
 		self.emission, self.states = self.create_emission(sequences)
 		self.transition = self.create_transition(sequences)
-		self.transition += 0.01
 
 	def create_transition(self, sequences):
 		state_dict = {"M":0, "D":1, "I":2}
@@ -84,9 +85,13 @@ class pHMM:
 					prev = current_states_list[pos-1]
 					current = current_states_list[pos]
 
-					transition[state_dict[prev]][state_dict[current]] += 1
+					if prev == "I" and prev == current and (pos == 0 or pos == None):
+						transition[state_dict[prev]][state_dict[current]] += 1.5
+					else:
+						transition[state_dict[prev]][state_dict[current]] += 1
 
-		return transition/(transition.sum(axis=0)+0.01) # returns normalized transition matrix by col
+
+		return (transition+1)/(transition.sum(axis=0)+3) # returns normalized transition matrix by col
  
 	def create_emission(self, sequences):
 		emission = []
@@ -171,26 +176,26 @@ def create_pHMMs(gene_dict):
 	pHMM_dict = dict()
 
 	for k,v in gene_dict.items():
-		if len(v) >= 10:
+		if len(v) >= 14:
 			aligned = multiseqalign(k,v)
-			print("Creating ", k, " pHMM...")
 			pHMM_dict[k] = pHMM(aligned)
-			print("Done creating pHMM")
 	
 	#aligned = ["AG---C","AGAG-C", "AG-AAG", "-GAAAC", "AG---C"]
 	#pHMM_dict["test"] = pHMM(aligned)
 
 	return pHMM_dict
 
-def score_sequence(region_seq): # viterbi
+def score_sequence(region_seq,pHMM_dict): # viterbi
 	# input = conserved region
 	# get a score using every pHMM
-	pHMM_dict = create_pHMMs(gene_dict)
 	score_dict = dict()
 	for gene_name, pHMM in pHMM_dict.items():
 		print("Scoring w", gene_name, "model...")
 		score_dict[gene_name] = viterbi(pHMM,region_seq)
-		print("Done scoring")
+		if score_dict[gene_name] == None:
+			del score_dict[gene_name]
+
+		#print("Done scoring")
 	# output = a dict with gene name as key, and val is the score
 	return score_dict
 
@@ -201,32 +206,31 @@ def viterbi(pHMM,sequence):
 	em = cycle(pHMM.emission)
 	tr = pHMM.transition
 
-	try:
-		Fm = np.zeros((N,L))
-		Fi = np.zeros((N,L))
-		Fd = np.zeros((N,L))
+	#try:
+	Fm = np.zeros((N,L))
+	Fi = np.zeros((N,L))
+	Fd = np.zeros((N,L))
 
-		Fm[0][0] = 1 #initialize
+	Fm[0][0] = 1 #initialize
 
-		current_state_em = next(em)
+	current_state_em = next(em)
 
-		for j in range(N): # goes through sequence
-			if j == 0:
-				continue
-			base = sequence[j]
-			for i in range(L):
-				Fm[j][i] = log(current_state_em.match_dict[base]) + max(Fm[j-1][i-1]+log(tr[0][0]), Fi[j-1][i-1] + log(tr[2][0]), Fi[j-1][i-1] + log(tr[1][0]))
-				Fi[j][i] = log(current_state_em.insert_dict[base]) + max(Fm[j][i-1]+log(tr[0][2]), Fi[j][i-1]+log(tr[2][2]))
-				Fd[j][i] = max(Fm[j-1][i]+log(tr[0][1]),Fd[j-1][i]+log(tr[1][1]))
-				current_state_em = next(em)
+	for j in range(N): # goes through sequence
+		if j == 0:
+			continue
+		base = sequence[j]
+		for i in range(L):
+			Fm[j][i] = log(current_state_em.match_dict[base]) + max(Fm[j-1][i-1]+log(tr[0][0]), Fi[j-1][i-1] + log(tr[2][0]), Fi[j-1][i-1] + log(tr[1][0]))
+			Fi[j][i] = log(current_state_em.insert_dict[base]) + max(Fm[j][i-1]+log(tr[0][2]), Fi[j][i-1]+log(tr[2][2]))
+			Fd[j][i] = max(Fm[j-1][i]+log(tr[0][1]),Fd[j-1][i]+log(tr[1][1]))
+			current_state_em = next(em)
 
-				if max(Fm[j][i],Fi[j][i],Fd[j][i]) < -5:
-					return -10
+			if max(Fm[j][i],Fi[j][i],Fd[j][i]) < -5:
+				return None
 
-
-		return max(Fm[N-1][L-1],Fi[N-1][L-1],Fd[N-1][L-1])
-	except:
-		return None
+	return max(Fm[N-1][L-1],Fi[N-1][L-1],Fd[N-1][L-1])
+	#except:
+	#	return None
 
 def create_unsorted_gene_list():
 	path = "data/annotations/"
@@ -263,14 +267,50 @@ def multiseqalign(gene_name,sequences):
 	alignment = AlignIO.read(out_file,format="fasta")
 	return [str(record.seq) for record in alignment]
 
+def initialize_pHMM_models():
+	unsorted_gene_list = create_unsorted_gene_list()
+	gene_dict = create_gene_dict(unsorted_gene_list)
+	phmm_dict = create_pHMMs(gene_dict)
+	return phmm_dict
+
+def score_all_conserved_regions(conserved_regions,pHMM_dicts):
+	all_score_dicts = []
+	for region in conserved_regions:
+		c = region.conserved.region1.seq
+		c = c.replace("-","")
+		all_score_dicts.append(score_sequence(c))
+
+	# returns list of dicts
+	return all_score_dicts
+
+
+def keywithmaxval(d):
+     """ a) create a list of the dict's keys and values; 
+         b) return the key with the max value"""  
+     v=list(d.values())
+     k=list(d.keys())
+     return k[v.index(max(v))]
+
 start_time = time.time()
 
 unsorted_gene_list = create_unsorted_gene_list()
 gene_dict = create_gene_dict(unsorted_gene_list)
 phmm_dict = create_pHMMs(gene_dict)
-score_dict = score_sequence('''ATGCCCACAGCCGCCCGTCTTGTCGCCGCCTTTTGCCTTGCGCTGCTGGCGTTTATCGTATCCGAACAGGTCAAGCCGCAGCTGCCCGAAGGCACCGATTTCGGCTATTTCAACTGGGTCAACACGGGGCTGGGCATTCTTTGCGGCTGGGTCATCATGGGGCCGCGTGCCGGGCGTGGGGCCGTCAGCGGCATCAACAACGGGCTGACCGGGGTTGGCGCGCTCGTGTTCTGGGGGCTGTTCGTGCATGGCACCTACGAGATGTTCCGCCTTGCCATGCGCAACCGCTATGACGGCCCGTTCGATGCGCTGCTGGCGATCTTCGAGGAAGCGGTCGAATTCGGCAGCGCCCTGCTGGTTTCCCATATTCTGGTGACGCTGGTGATCGGGGCGGTTATATCTGGGCTGGCCACCGATTTTGCCTGGAGACGGTGGCGCTGA''')
-for k,v in score_dict.items():
-	print(k, ": ", v)
+score_dict = score_sequence('''ATGCCCACAGCCGCCCGTCTTGTCGCCGCCTTTTG''')
+possible_gene = []
+
+for i in range(2):
+	maxkey = keywithmaxval(score_dict)
+	maxscore = score_dict[keywithmaxval(score_dict)]
+	possible_gene.append((maxkey,maxscore))
+	del score_dict[maxkey]
+
+print(possible_gene)
+
+
+
+
+
 
 print("--- %s seconds ---" % (time.time() - start_time))
 
