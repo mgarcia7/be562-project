@@ -283,6 +283,22 @@ def score_all_conserved_regions(conserved_regions,pHMM_dicts):
 	# returns list of dicts
 	return all_score_dicts
 
+def predictions(conserved_regions,all_score_dicts):
+	for idx,score_dict in enumerate(all_score_dicts):
+		for i in range(2):
+			maxkey = keywithmaxval(score_dict)
+			maxscore = score_dict[keywithmaxval(score_dict)]
+			conserved_regions[idx].possible_genes.append((maxkey,maxscore))
+			del score_dict[maxkey]
+	return conserved_regions
+
+def print(conserved_regions):
+	for regions in conserved_regions:
+		print(regions.conserved.region1.organism,regions.conserved.region2.organism)
+		print(regions.conserved.possible_genes)
+		print()
+
+
 
 def keywithmaxval(d):
      """ a) create a list of the dict's keys and values; 
@@ -291,12 +307,14 @@ def keywithmaxval(d):
      k=list(d.keys())
      return k[v.index(max(v))]
 
+'''
+
 start_time = time.time()
 
 unsorted_gene_list = create_unsorted_gene_list()
 gene_dict = create_gene_dict(unsorted_gene_list)
 phmm_dict = create_pHMMs(gene_dict)
-score_dict = score_sequence('''ATGCCCACAGCCGCCCGTCTTGTCGCCGCCTTTTG''')
+
 possible_gene = []
 
 for i in range(2):
@@ -306,13 +324,10 @@ for i in range(2):
 	del score_dict[maxkey]
 
 print(possible_gene)
+'''
 
 
 
-
-
-
-print("--- %s seconds ---" % (time.time() - start_time))
 
 # Create profile HMM model of a gene
 	# list - gene = [seq1, seq2, seq3]
