@@ -14,7 +14,8 @@ from Bio.Alphabet import generic_dna
 import Bio.SeqIO as SeqIO
 from Bio.Align.Applications import ClustalOmegaCommandline
 from Bio import AlignIO
-
+from itertools import cycle
+import time
 
 class PositionState:
 	nucl = ["A", "G", "C", "T", "-"]
@@ -48,7 +49,6 @@ class PositionState:
 			insert_dict[self.nucl[idx]] = PFM[idx][self.pos].sum()/num_seqs + 0.01
 
 		return insert_dict
-
 
 class pHMM:
 	# match state as defined
@@ -105,9 +105,7 @@ class pHMM:
 				emission.append(PositionState(bases,self.PFM,pos,len(sequences[0])))
 
 		#emission.append(None) # signals end state
-
 		return emission,states
-
 
 def get_PFM(sequences):
 	PFM = np.zeros((5,len(sequences[0])))
@@ -173,19 +171,14 @@ def create_pHMMs(gene_dict):
 	pHMM_dict = dict()
 
 	for k,v in gene_dict.items():
-		if len(v) >= 3:
-			k = "ureA"
-			v = gene_dict[k]
+		if len(v) >= 10:
 			aligned = multiseqalign(k,v)
 			print("Creating ", k, " pHMM...")
 			pHMM_dict[k] = pHMM(aligned)
 			print("Done creating pHMM")
-			break
 	
-	'''
-	aligned = ["AG---C","AGAG-C", "AG-AAG", "-GAAAC", "AG---C"]
-	pHMM_dict["test"] = pHMM(aligned)
-	'''
+	#aligned = ["AG---C","AGAG-C", "AG-AAG", "-GAAAC", "AG---C"]
+	#pHMM_dict["test"] = pHMM(aligned)
 
 	return pHMM_dict
 
@@ -201,42 +194,39 @@ def score_sequence(region_seq): # viterbi
 	# output = a dict with gene name as key, and val is the score
 	return score_dict
 
-def viterbi(pHMM, sequence):
-	N = len(pHMM.states) # number of states
-	L = len(sequence) #number of nucleotides
-	em = pHMM.emission
+
+def viterbi(pHMM,sequence):
+	L = pHMM.states.count("M") # number of matching states
+	N = len(sequence) #length of seq
+	em = cycle(pHMM.emission)
 	tr = pHMM.transition
 
+	try:
+		Fm = np.zeros((N,L))
+		Fi = np.zeros((N,L))
+		Fd = np.zeros((N,L))
 
-	V = np.zeros((L,N)) #cols = states, rows = seq
-						# V[1][1] = max()
-	current_state_list = [0]
-	count = 0
-	for pos in range(L):
-		if pos == 0:
-			Vprev = [1, 0, 0]
-		else:
-			Vprev = V[pos-1]
+		Fm[0][0] = 1 #initialize
 
-		if current_state_list[-1] == 0:
-			current_state_em = pHMM.emission[count]
-			count += 1
+		current_state_em = next(em)
 
-		base = sequence[pos]
-		ran = [current_state_em.match_dict, current_state_em.delete_dict, current_state_em.insert_dict]
+		for j in range(N): # goes through sequence
+			if j == 0:
+				continue
+			base = sequence[j]
+			for i in range(L):
+				Fm[j][i] = log(current_state_em.match_dict[base]) + max(Fm[j-1][i-1]+log(tr[0][0]), Fi[j-1][i-1] + log(tr[2][0]), Fi[j-1][i-1] + log(tr[1][0]))
+				Fi[j][i] = log(current_state_em.insert_dict[base]) + max(Fm[j][i-1]+log(tr[0][2]), Fi[j][i-1]+log(tr[2][2]))
+				Fd[j][i] = max(Fm[j-1][i]+log(tr[0][1]),Fd[j-1][i]+log(tr[1][1]))
+				current_state_em = next(em)
 
-		for k in range(3): #match,delete,insert
-			emprob = ran[k][base]
-			prev = [prob + log(tr[k][state_num]+0.01) for state_num,prob in enumerate(Vprev)]
-		
-		V[pos][k] = log(emprob+0.01) + np.argmax(prev)
-
-		
-		index_prev = np.argmax(V[-1])
-		current_state_list.append(index_prev)
+				if max(Fm[j][i],Fi[j][i],Fd[j][i]) < -5:
+					return -10
 
 
-	return max(V[-1])
+		return max(Fm[N-1][L-1],Fi[N-1][L-1],Fd[N-1][L-1])
+	except:
+		return None
 
 def create_unsorted_gene_list():
 	path = "data/annotations/"
@@ -273,13 +263,16 @@ def multiseqalign(gene_name,sequences):
 	alignment = AlignIO.read(out_file,format="fasta")
 	return [str(record.seq) for record in alignment]
 
+start_time = time.time()
 
 unsorted_gene_list = create_unsorted_gene_list()
 gene_dict = create_gene_dict(unsorted_gene_list)
-#phmm_dict = create_pHMMs(gene_dict)
-score_dict = score_sequence('''ATGGCCAGCATCTTCCCGTCCCGCCGGGTCCGGCGCACACCTTTTTCCGCCGGTGTCGAGGCGGCCGGGGTCAAGGGCTATACCGTCTACAATCACATGTTGCTGCCCACGGTGTTCGACAGCCTGCAGGCCGATTGCGCCCATCTGAAGGAACATGTGCAGGTCTGGGACGTGGCCTGCGAGCGGCAGGTCAGCATCCAGGGGCCCGACGCGCTGCGGCTGATGAAGCTGATCAGCCCGCGCGACATGGACCGGATGGCCGATGACCAGTGTTACTACGTGCCCACGGTCGATCATCGTGGCGGCATGCTGAACGATCCGGTGGCGGTGAAACTGGCCGCCGATCATTACTGGCTGTCGCTGGCCGATGGCGACCTGCTGCAATTCGGGCTGGGGATTGCGATCGCCCGGGGCTTCGAGTCGAGATCGTCGAACCCGATGTCTCGCCGCTGGCCGTGCAGGGACCCAGGGCCGACGATCTGATGGCGCGGGTCTTTGGCGAGGCGGTGCGCGATATCCGCTTTTTCCGCTACAAGCGGCTGGCCTTTCAGGGAGTCGAGCTTGTGGTGGCGCGCTCAGGCTGGTCGAAACAGGGCGGCTTCGAGATCTATGTCGAGGGTTCGGAACTGGGCATGCCGCTGTGGAACGCGCTGTTTGCCGCCGGTGCGGACCTGAACGTGCGCGCGGGTTGCCCCAACAATATCGAGCGCGTCGAGAGCGGGTTGTTGAGCTATGGCAACGACATGACCCGCGAGAACACGCCGTATGAATGCGGCCTGGGTAAGTTCTGCAATTCGCCCGAGGACTATATCGGCAAGGCAGCACTGGCCGAACAGGCCAAGAACGGACCGGCGCGCCAGATCCGGGCACTGGTGATCGGTGGCGAGATTCCGCCCTGTCAGGATGCCTGGCCGCTGCTGGCCGACGGTCGCCAGGTGGGGCAGGTGGGGTCAGCGATCCATTCCCCTGAATTCGGCGTGAATGTCGCGATCGGCATGGTGGATCGCAGCCATTGGGCGCCGGGCACCGGGATGGAAGTGGAAACGCCCGACGGCATGCGGCCGGTTACGGTGCGCGAGGGGTTCTGGCGTTAA''')
+phmm_dict = create_pHMMs(gene_dict)
+score_dict = score_sequence('''ATGCCCACAGCCGCCCGTCTTGTCGCCGCCTTTTGCCTTGCGCTGCTGGCGTTTATCGTATCCGAACAGGTCAAGCCGCAGCTGCCCGAAGGCACCGATTTCGGCTATTTCAACTGGGTCAACACGGGGCTGGGCATTCTTTGCGGCTGGGTCATCATGGGGCCGCGTGCCGGGCGTGGGGCCGTCAGCGGCATCAACAACGGGCTGACCGGGGTTGGCGCGCTCGTGTTCTGGGGGCTGTTCGTGCATGGCACCTACGAGATGTTCCGCCTTGCCATGCGCAACCGCTATGACGGCCCGTTCGATGCGCTGCTGGCGATCTTCGAGGAAGCGGTCGAATTCGGCAGCGCCCTGCTGGTTTCCCATATTCTGGTGACGCTGGTGATCGGGGCGGTTATATCTGGGCTGGCCACCGATTTTGCCTGGAGACGGTGGCGCTGA''')
 for k,v in score_dict.items():
 	print(k, ": ", v)
+
+print("--- %s seconds ---" % (time.time() - start_time))
 
 # Create profile HMM model of a gene
 	# list - gene = [seq1, seq2, seq3]
