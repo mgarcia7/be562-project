@@ -1,3 +1,0 @@
-data/genomes/Dshibae.fasta
-Start: 10000
-End: 7000

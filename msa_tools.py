@@ -171,32 +171,39 @@ class Alignment(object):
 		#regions coming from right flank start at l - 5000 + 5000, or l - 5000 from the
 		#left side of fragment.
 		conserved = []
+
 		F, TB = self.Smith_Waterman(seq1_left, seq2_left)
-		for i in self.traceback(organism1, seq1_left, 0, organism2, seq2_left, 0, F, TB):
-			conserved.append(i)
+		conserved.extend(self.traceback(organism1, seq1_left, 0, organism2, seq2_left, 0, F, TB))
+		print("Done with 1...")
+
 		F, TB = self.Smith_Waterman(seq1_left, seq2_right)
-		for i in self.traceback(organism1, seq1_left, 0, organism2, seq2_right, len(self.seq2)-5000, F, TB):
-			conserved.append(i)
+		conserved.extend(self.traceback(organism1, seq1_left, 0, organism2, seq2_right, len(self.seq2)-5000, F, TB))
+		print("Done with 2...")
+		
 		F, TB = self.Smith_Waterman(seq1_right, seq2_left)
-		for i in self.traceback(organism1, seq1_right, len(self.seq1)-5000, organism2, seq2_left, 0, F, TB):
-			conserved.append(i)
+		conserved.extend(self.traceback(organism1, seq1_right, len(self.seq1)-5000, organism2, seq2_left, 0, F, TB))
+		print("Done with 3...")
+		
 		F, TB = self.Smith_Waterman(seq1_right, seq2_right)
-		for i in self.traceback(organism1, seq1_right, len(self.seq1)-5000, organism2, seq2_right, len(self.seq2)-5000, F, TB):
-			conserved.append(i)
+		conserved.extend(self.traceback(organism1, seq1_right, len(self.seq1)-5000, organism2, seq2_right, len(self.seq2)-5000, F, TB))
+		print("Done with 4...")
+		
 		return conserved
 
 
 	def read_fasta(self, filename):
 		"""Reads in a FASTA sequence. Assumes one sequence in the file"""
 		seq = []
+		print(filename.split("/")[2].split(".")[0], "".join(seq))
 
-		with open(filename, "r") as f:
-			for line in f:
-				if line.startswith(">"):
-					continue
-				seq.append(line.rstrip().upper())
+		if filename.endswith(".txt"):
+			with open(filename, "r") as f:
+				for line in f:
+					if line.startswith(">"):
+						continue
+					seq.append(line.rstrip().upper())
 
-		return filename.split("/")[3].split(".")[0], "".join(seq)
+		return filename.split("/")[2].split(".")[0], "".join(seq)
 
 
 """

@@ -199,7 +199,6 @@ def score_sequence(region_seq,pHMM_dict): # viterbi
 	# output = a dict with gene name as key, and val is the score
 	return score_dict
 
-
 def viterbi(pHMM,sequence):
 	L = pHMM.states.count("M") # number of matching states
 	N = len(sequence) #length of seq
@@ -298,8 +297,6 @@ def print(conserved_regions):
 		print(regions.conserved.possible_genes)
 		print()
 
-
-
 def keywithmaxval(d):
      """ a) create a list of the dict's keys and values; 
          b) return the key with the max value"""  
@@ -325,22 +322,3 @@ for i in range(2):
 
 print(possible_gene)
 '''
-
-
-
-
-# Create profile HMM model of a gene
-	# list - gene = [seq1, seq2, seq3]
-	# get their alignments
-	# get modified PFM for all the sequences (to check whether a col is mostly gaps)
-	# states = insertion, deletion, match
-	# match state (A,G,C,T) = freq of base at that position/# seq, add a dirichlet for the 0s
-	# transition probabilities = number of transitions from i to j/number of transitinos from i to other states
-
-# Create profile HMM model for all genes
-
-# Get probability of gene name based on sequence using profile HMM
-
-# Get gene name from BLAST and get e-value
-
-# Combine and predict a gene name
