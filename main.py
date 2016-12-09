@@ -24,7 +24,10 @@ def main():
 		while (abs(a - b) < 2):
 			b = random.randint(0, len(files)-1)
 
-		conserved.append([a for a in msa.Alignment(files[a], files[b]).conserved])
+		#conserved.append([a for a in msa.Alignment(files[a], files[b]).conserved])
+		with open('entry.pickle', 'wb') as f:
+			for c in msa.Alignment(files[a], files[b]).conserved:
+				pickle.dump(c, f)
 
 	#filter results to those of significant length
 	conserved = [c for c in conserved if (c.region1.ending - c.region1.beginning > 500)]

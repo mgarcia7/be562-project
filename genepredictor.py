@@ -16,6 +16,7 @@ from Bio.Align.Applications import ClustalOmegaCommandline
 from Bio import AlignIO
 from itertools import cycle
 import time
+import pickle
 
 class PositionState:
 	nucl = ["A", "G", "C", "T", "-"]
@@ -155,8 +156,6 @@ def read_in_annotated(filename, pattern): # p is the compiled pattern object
 			if current_gene_sequence is not None and ">lcl" not in line:
 				current_gene_sequence.sequence += line[:-1] #don't include \n
 				
-
-	# Return a list of the genes surrounding dmDa for a genome
 	return gene_sequences
 
 def create_gene_dict(gene_list):
@@ -176,7 +175,7 @@ def create_pHMMs(gene_dict):
 	pHMM_dict = dict()
 
 	for k,v in gene_dict.items():
-		if len(v) >= 14:
+		if len(v) >= 8:
 			aligned = multiseqalign(k,v)
 			pHMM_dict[k] = pHMM(aligned)
 	
@@ -192,8 +191,7 @@ def score_sequence(region_seq,pHMM_dict): # viterbi
 	for gene_name, pHMM in pHMM_dict.items():
 		print("Scoring w", gene_name, "model...")
 		score_dict[gene_name] = viterbi(pHMM,region_seq)
-		if score_dict[gene_name] == None:
-			del score_dict[gene_name]
+		print(score_dict[gene_name])
 
 		#print("Done scoring")
 	# output = a dict with gene name as key, and val is the score
@@ -224,8 +222,8 @@ def viterbi(pHMM,sequence):
 			Fd[j][i] = max(Fm[j-1][i]+log(tr[0][1]),Fd[j-1][i]+log(tr[1][1]))
 			current_state_em = next(em)
 
-			if max(Fm[j][i],Fi[j][i],Fd[j][i]) < -5:
-				return None
+			if max(Fm[j][i],Fi[j][i],Fd[j][i]) < -100:
+				return -100
 
 	return max(Fm[N-1][L-1],Fi[N-1][L-1],Fd[N-1][L-1])
 	#except:
@@ -291,7 +289,7 @@ def predictions(conserved_regions,all_score_dicts):
 			del score_dict[maxkey]
 	return conserved_regions
 
-def print(conserved_regions):
+def region_print(conserved_regions):
 	for regions in conserved_regions:
 		print(regions.conserved.region1.organism,regions.conserved.region2.organism)
 		print(regions.conserved.possible_genes)
@@ -303,9 +301,73 @@ def keywithmaxval(d):
      v=list(d.values())
      k=list(d.keys())
      return k[v.index(max(v))]
+ 
+def run_validation():
+	# get gene seqs
+	path = "data/annotations/"
+	p = re.compile("(?<=\[).+?(?=\])")
+	gene_sequences = read_in_annotated(path+"Rmobilis_annotated.txt",p)
+	gene_dict = create_gene_dict(gene_sequences)
+
+	# create phmms
+	phmm_dict = initialize_pHMM_models()
+
+	#scoring
+	'''
+	all_score_dicts = []
+	for region in gene_sequences:
+		print(region.gene_name)
+		all_score_dicts.append(score_sequence(region.sequence,phmm_dict))
+	'''
+	# Rmobilis gapA
+	score_dict = score_sequence('''ATGACCCTTAAGATCGCGATCAATGGATTTGGCCGGATTGGCCGCAACGTGCTGCGCGCGCTGTTGGAAAACGACACCACCGACGTCGAAGTGGTGGCAATCAACGACCTCGCGCCCCCCGCCACCCAAGTTCACCTGCTGAAATTCGACAGCGTGCATGGCCGCCTCAACGCCGATGTCACGGTCGAGGGCGACACGATGAAAGTGGGCCGTCATGAAATTCGCCTGACCGCGATCCGCAACCCCGAAGAGCTGCCGTGGTCTGATGTGGATATCGCCTATGAATGCACCGGCCTCTTCACCAGTCGTGAAAAAGCGGCCATGCATCTGAAGAACGGCTCCAAACGGGTGCTGATCTCTGCACCGGGCACCGAGGTCGACCGCACCGTGGTCTTTGGCGTCAATGACCAAGACCTCACCGCAGATGATATCGTGGTCTCCAATGCGTCCTGCACCACCAACTGCCTCGCACCGGTGGCAAAGGTGCTGGACGATGCCTTTGGCATCAAGACGGGCTATATGACCACAATCCACGCCTACACGGGCGACCAGCCGACCCATGACACAACCCACAAGGATCTCTACCGCGCCCGCGCGGCAGCATTGTCGATGATCCCGACCTCCACGGGCGCAGCGCGGGCCATTTCCCTCGTGCTGCCGCACCTGAAGGGTCGCCTCGAAGGTTCCGCCATCCGCGTGCCCACCCCGAATGTCTCGGTTGTGGACCTGACCTTCCAACCCGAGCGCGCCGCTTCTGTTGAGGGGATCAATGCCGCCATTGAGGCCGCCTCAAAAGAGGGTCCGCTCAAGGGTGTCCTCGGCTACGAGGAGGCGCCGCTGGTCTCCATCGACTTCAACCACGACAAACGCTCCTCGATCTTTGCCGCACCACAAACAGCCGTGACCTCCGAGGGTCTGGTGCGCTTGGTCAGCTGGTATGACAACGAATGGGGCTTTTCCAACCGGATGATCGACACCGGTCGCGCCATGGGCAAATTTCTCTGA''',phmm_dict)
+
+	with open('entry.pickle', 'wb') as f:
+			pickle.dump(score_dict, f)
+
+	print(score_dict)
+	'''
+	#predicting
+	possible_genes = []
+	maxkey = keywithmaxval(score_dict)
+	maxscore = score_dict[keywithmaxval(score_dict)]
+	possible_genes.append(maxkey)
+	print(possible_genes)
+	'''
+
+
+	'''
+	c = 0
+	for actual,predicted in zip(gene_sequences,possible_genes):
+		actual = actual.gene_name
+		if actual == predicted:
+			c += 1
+	'''
+
+def lol():
+	phmm_dict = initialize_pHMM_models()
+	score_dict = score_sequence('''ATGACCCTTAAGATCGCGATCAATGGATTTGGCCGGATTGGCCGCAACGTGCTGCGCGCGCTGTTGGAAAACGACACCACCGACGTCGAAGTGGTGGCAATCAACGACCTCGCGCCCCCCGCCACCCAAGTTCACCTGCTGAAATTCGACAGCGTGCATGGCCGCCTCAACGCCGATGTCACGGTCGAGGGCGACACGATGAAAGTGGGCCGTCATGAAATTCGCCTGACCGCGATCCGCAACCCCGAAGAGCTGCCGTGGTCTGATGTGGATATCGCCTATGAATGCACCGGCCTCTTCACCAGTCGTGAAAAAGCGGCCATGCATCTGAAGAACGGCTCCAAACGGGTGCTGATCTCTGCACCGGGCACCGAGGTCGACCGCACCGTGGTCTTTGGCGTCAATGACCAAGACCTCACCGCAGATGATATCGTGGTCTCCAATGCGTCCTGCACCACCAACTGCCTCGCACCGGTGGCAAAGGTGCTGGACGATGCCTTTGGCATCAAGACGGGCTATATGACCACAATCCACGCCTACACGGGCGACCAGCCGACCCATGACACAACCCACAAGGATCTCTACCGCGCCCGCGCGGCAGCATTGTCGATGATCCCGACCTCCACGGGCGCAGCGCGGGCCATTTCCCTCGTGCTGCCGCACCTGAAGGGTCGCCTCGAAGGTTCCGCCATCCGCGTGCCCACCCCGAATGTCTCGGTTGTGGACCTGACCTTCCAACCCGAGCGCGCCGCTTCTGTTGAGGGGATCAATGCCGCCATTGAGGCCGCCTCAAAAGAGGGTCCGCTCAAGGGTGTCCTCGGCTACGAGGAGGCGCCGCTGGTCTCCATCGACTTCAACCACGACAAACGCTCCTCGATCTTTGCCGCACCACAAACAGCCGTGACCTCCGAGGGTCTGGTGCGCTTGGTCAGCTGGTATGACAACGAATGGGGCTTTTCCAACCGGATGATCGACACCGGTCGCGCCATGGGCAAATTTCTCTGA''',phmm_dict)
+
+
+
+
+
+start_time = time.time()
+run_validation()
+print("--- %s seconds ---" % (time.time() - start_time))
+
+
+
+
+
+
+
+
+
+
+
 
 '''
-
 start_time = time.time()
 
 unsorted_gene_list = create_unsorted_gene_list()
