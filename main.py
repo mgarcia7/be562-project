@@ -4,7 +4,6 @@ import random
 import msa_tools as msa
 import genepredictor as gp
 import time
-import pickle
 
 def main():
 
@@ -31,9 +30,6 @@ def main():
 
 	#filter results to those of significant length
 	conserved = [c for c in conserved if (c.region1.ending - c.region1.beginning > 500)]
-	with open('entry.pickle', 'wb') as f:
-		for c in conserved:
-			pickle.dump(c, f)
 
 	pHMM_dict = gp.initialize_pHMM_models()
 	all_score_dicts = gp.score_all_conserved_regions(conserved_regions,pHMM_dicts)

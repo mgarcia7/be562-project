@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+####################################################################################
+# TASK: Find conserved regions between different genomes
+####################################################################################
 
 import sys
 import numpy as np

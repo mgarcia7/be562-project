@@ -1,8 +1,8 @@
-################################################################
-# TASK: Predict what gene it is based on annotated genes + BLAST
+####################################################################################
+# TASK: Predict what gene it is based on annotated genes from other genomes
 # INPUT: Conserved regions
 # OUTPUT: Name of gene of all the conserved regions/likelihood that it is that gene
-################################################################
+####################################################################################
 import numpy as np
 import re
 from collections import Counter, defaultdict
@@ -16,7 +16,6 @@ from Bio.Align.Applications import ClustalOmegaCommandline
 from Bio import AlignIO
 from itertools import cycle
 import time
-import pickle
 
 class PositionState:
 	nucl = ["A", "G", "C", "T", "-"]
@@ -38,7 +37,7 @@ class PositionState:
 		match_dict = {}
 		num_seqs = len(bases)
 		for idx in range(4):
-			match_dict[self.nucl[idx]] = (PFM[idx][self.pos]+1)/(num_seqs+4) # implement the "add-one rule"
+			match_dict[self.nucl[idx]] = (PFM[idx][self.pos]+1)/(num_seqs+4) 
 
 		return match_dict
 
@@ -110,7 +109,6 @@ class pHMM:
 				states.append("M")
 				emission.append(PositionState(bases,self.PFM,pos,len(sequences[0])))
 
-		#emission.append(None) # signals end state
 		return emission,states
 
 def get_PFM(sequences):
@@ -138,7 +136,8 @@ class GeneSequence:
 			if "location=" in text:
 				self.location = re.sub(r"[^0-9\.]",r"", text).split("..") #get rid of non-numeric and non-periods
 
-def read_in_annotated(filename, pattern): # p is the compiled pattern object
+def read_in_annotated(filename, pattern):
+	''' Reads in the annotated gene files and creates GeneSequence objects for each gene '''
 	current_gene_sequence = None
 	gene_sequences = []
 
@@ -159,19 +158,16 @@ def read_in_annotated(filename, pattern): # p is the compiled pattern object
 	return gene_sequences
 
 def create_gene_dict(gene_list):
+	''' Takes a list of GeneSequence objects and outputs a dictionary which groups all the gene sequences by name '''
 	gene_dict = defaultdict(list)
 	for gene in gene_list:
 		gene_dict[gene.gene_name].append(gene)
-	# input = list of all sequences
-	# output = a dict where the key is the name of gene and the val is a list of all the gene sequences
 
-	#maybe remove the genes that only appear once
 	return gene_dict
 
 def create_pHMMs(gene_dict):
-	# input = dict from above function
-	# for each key-val pair, align the sequences and create a pHMM
-	# output = dict where name of gene is the key, and the val is the pHMM
+	''' Creates a pHMM for each unique gene '''
+
 	pHMM_dict = dict()
 
 	for k,v in gene_dict.items():
@@ -179,25 +175,23 @@ def create_pHMMs(gene_dict):
 			aligned = multiseqalign(k,v)
 			pHMM_dict[k] = pHMM(aligned)
 	
-	#aligned = ["AG---C","AGAG-C", "AG-AAG", "-GAAAC", "AG---C"]
-	#pHMM_dict["test"] = pHMM(aligned)
 
 	return pHMM_dict
 
-def score_sequence(region_seq,pHMM_dict): # viterbi
-	# input = conserved region
-	# get a score using every pHMM
+def score_sequence(region_seq,pHMM_dict):
+	''' Scores each conserved region sequence with each gene pHMM '''
+
 	score_dict = dict()
 	for gene_name, pHMM in pHMM_dict.items():
 		print("Scoring w", gene_name, "model...")
 		score_dict[gene_name] = viterbi(pHMM,region_seq)
 		print(score_dict[gene_name])
 
-		#print("Done scoring")
-	# output = a dict with gene name as key, and val is the score
 	return score_dict
 
-def viterbi(pHMM,sequence):
+def viterbi(pHMM,sequence): 
+	''' Calculates viterbi score for one pHMM and a sequence '''
+
 	L = pHMM.states.count("M") # number of matching states
 	N = len(sequence) #length of seq
 	em = cycle(pHMM.emission)
@@ -222,16 +216,14 @@ def viterbi(pHMM,sequence):
 			Fd[j][i] = log(exp(Fm[j-1][i])*log(tr[0][1]) + exp(Fd[j-1][i])*tr[1][1])
 			current_state_em = next(em)
 
-			'''
-			if max(Fm[j][i],Fi[j][i],Fd[j][i]) < -252:
-				return -252
-			'''
+
 
 	return Fm[N-1][L-1]+Fi[N-1][L-1]+Fd[N-1][L-1]
-	#except:
-	#	return None
+
 
 def create_unsorted_gene_list():
+	''' Creates a gene list of all the lists for all the annotated genes (not grouped by name) '''
+
 	path = "data/annotations/"
 	filenames = [file for file in next(os.walk(path))[2] if ".txt" in file] #["Dshibae_annotated.txt", "Oantarcticus307_annotated.txt", "Oarcticus238_annotated.txt", "Rmobilis_annotated.txt", "Rpomeroyi_annotated.txt"]
 	
@@ -248,6 +240,8 @@ def create_unsorted_gene_list():
 	return unsorted_gene_list
 
 def multiseqalign(gene_name,sequences):
+	''' Aligns all the sequences of a certain gene '''
+
 	in_file = "data/alignments/unaligned.fasta"
 	out_file = "data/alignments/aligned" + "_" + gene_name + ".fasta"
 
@@ -296,96 +290,3 @@ def region_print(conserved_regions):
 		print(regions.conserved.region1.organism,regions.conserved.region2.organism)
 		print(regions.conserved.possible_genes)
 		print()
-
-def keywithmaxval(d):
-     """ a) create a list of the dict's keys and values; 
-         b) return the key with the max value"""  
-     v=list(d.values())
-     k=list(d.keys())
-     return k[v.index(max(v))]
- 
-def run_validation():
-	# get gene seqs
-	path = "data/annotations/"
-	p = re.compile("(?<=\[).+?(?=\])")
-	gene_sequences = read_in_annotated(path+"Rmobilis_annotated.txt",p)
-	gene_dict = create_gene_dict(gene_sequences)
-
-	# create phmms
-	phmm_dict = initialize_pHMM_models()
-
-	#scoring
-	'''
-	all_score_dicts = []
-	for region in gene_sequences:
-		print(region.gene_name)
-		all_score_dicts.append(score_sequence(region.sequence,phmm_dict))
-	'''
-	# Rmobilis gapA
-	score_dict = score_sequence('''ATGACCCTTAAGATCGCGATCAATGGATTTGGCCGGATTGGCCGCAACGTGCTGCGCGCGCTGTTGGAAAACGACACCACCGACGTCGAAGTGGTGGCAATCAACGACCTCGCGCCCCCCGCCACCCAAGTTCACCTGCTGAAATTCGACAGCGTGCATGGCCGCCTCAACGCCGATGTCACGGTCGAGGGCGACACGATGAAAGTGGGCCGTCATGAAATTCGCCTGACCGCGATCCGCAACCCCGAAGAGCTGCCGTGGTCTGATGTGGATATCGCCTATGAATGCACCGGCCTCTTCACCAGTCGTGAAAAAGCGGCCATGCATCTGAAGAACGGCTCCAAACGGGTGCTGATCTCTGCACCGGGCACCGAGGTCGACCGCACCGTGGTCTTTGGCGTCAATGACCAAGACCTCACCGCAGATGATATCGTGGTCTCCAATGCGTCCTGCACCACCAACTGCCTCGCACCGGTGGCAAAGGTGCTGGACGATGCCTTTGGCATCAAGACGGGCTATATGACCACAATCCACGCCTACACGGGCGACCAGCCGACCCATGACACAACCCACAAGGATCTCTACCGCGCCCGCGCGGCAGCATTGTCGATGATCCCGACCTCCACGGGCGCAGCGCGGGCCATTTCCCTCGTGCTGCCGCACCTGAAGGGTCGCCTCGAAGGTTCCGCCATCCGCGTGCCCACCCCGAATGTCTCGGTTGTGGACCTGACCTTCCAACCCGAGCGCGCCGCTTCTGTTGAGGGGATCAATGCCGCCATTGAGGCCGCCTCAAAAGAGGGTCCGCTCAAGGGTGTCCTCGGCTACGAGGAGGCGCCGCTGGTCTCCATCGACTTCAACCACGACAAACGCTCCTCGATCTTTGCCGCACCACAAACAGCCGTGACCTCCGAGGGTCTGGTGCGCTTGGTCAGCTGGTATGACAACGAATGGGGCTTTTCCAACCGGATGATCGACACCGGTCGCGCCATGGGCAAATTTCTCTGA''',phmm_dict)
-
-	with open('new_entry.pickle', 'wb') as f:
-			pickle.dump(score_dict, f)
-
-	print(score_dict)
-	'''
-	#predicting
-	possible_genes = []
-	maxkey = keywithmaxval(score_dict)
-	maxscore = score_dict[keywithmaxval(score_dict)]
-	possible_genes.append(maxkey)
-	print(possible_genes)
-	'''
-
-
-	'''
-	c = 0
-	for actual,predicted in zip(gene_sequences,possible_genes):
-		actual = actual.gene_name
-		if actual == predicted:
-			c += 1
-	'''
-
-def lol():
-	phmm_dict = initialize_pHMM_models()
-	seq = "GTGATCTTTCGCCA-GCCGATCAT--C-TGCAAAAACGTCCCCCGCCTTGTGCCCGGCTGGACCCAGCCCATCGTC-GTGGGTC-G-CCA--TGCCTTTGGCGACCAGTATAAAGCCACCGACATGA-AGT-TCC--CCGGCGC-G---GGC-ACG-C-T-GACGATGAAATTCA-CC-GGTGA-A--GAC-G-G--CA--CCGA-GATCGAGCATGA--GGTCTACAAGGCCGACGGCGCGG-GCGTATTCATGTCGATGTATAAT-ATCGACGCCTCCATCTATGACTTCGCGCGCGCGTCGTTCAACTATGGCCT-G-AAC-CT-GGG---CTGGCCCGTTTAC-CTCTCCACCAAAAATACCATTCTGAAACAATACGATGGCCGCTTCCTTGAGATCTTCTCCGAAGTCTATGAGGCCGAGTTCAAG-GAGGCGTTCGAGGAAAAGAAGATCTGGTACGAACACCG-CCTCATCGACGACATGGTCGCCTGTGCGATCAAGTG-GAACGGCGGCTTTGTCTGGGC-CTGC-AAGAATTAC-G-ACG-G--TGACGTACAGTCGGACGTTGTGGCG-CAGGGCTTTGGCTCGCTCGGGATGATGGCCAGCCAGTTGATGACGCC-C--GA-CGGCAAGATCGTGGAATCGGAGGCCGCCCACGGCACCGTCACCCGTCAC-TACCGCAATCATCAGGAGGGGAAGGCCACCTCCACCAACTCCATCGCCTCGATCTATGCCTGGACCGGCG-GCCTGAAGCACCGCGCCAAGCTGGATGACAATGC-GA-AGCTGGCCGAATTCGCCGAAACGCTGGAGCGGGTGATCATCGAG-A-CCGTGGAATCCGGGTTCATGACCAAGGACCTCGCGCTTCTGGTGGGGCCGGATCAAAG-CTG-GCTGACGACCATGGGGTTCCT-GG-A-G--AAGATC-GACGAGAACCTCAGCAAGG---CGCTGGCGGGCTAGGGCAAGTC-CGGCA-TTCCGCCAGTTGCGAACCCAACCGCGGTCGGTCTACTG-GCCCTGTTCGGCGGGCGGC--TTGCCCTCAT-GATCAGGAGCG-GGCG-CAT-GT-TTTG-GGTCA-AGAAAGGATTGCG-GAGCCTGTGCTGGCTCGTGGCCATCTTGGCCTGTGCCCCACTGGCCCTCG-GCG-TTG-CGTTCTTCATTGAGTATCAGCGTTTTTGCACGCCGTGGGATGAGTTTCCGGG-TTATCACGTGGCGGAATGCTGGGATAT-T-CA-GCGCGCCGCGCTCAGGCTGACCGCGTTGGGCGCGCCCCTTGTCTTGCCGTTGCTGGTGATGCTG-GT-TCTTCTTTGCAC-GCC-GCGTTTCAGGCGG--TGGGTC-AAATTG-TAGGCCCATTGACCTCT-GCCGCGCGTCACCGCACCCTGCCCCGACCCATGACGGAGCGCCCT-ATGACCCAACCGCAATTCG-CCCGCTACCCCTCCCTCGACGGCGCGTCCGTGTTCATCACCGGCGGCGCATCTGGC-ATCGGTGC-G-GGCATGGTGCGGGCTTTCGCCGATCAGGGTGCTCAGGTGGGGTTCGTGGATATGGATGCGGACGGCGGCACCGCGCTGGCATCTGAAACCGGCGCGACCTTCGCC-G-C-CTG-TGATCTGC-GC-GAT-ATCAACGGGTTACGCAGCGC-GTTC-GCCACACTGGCCGACGCCAATGGC-CCGGCGCAAGTGCT-GGT-CAACAATG-CCGCCCGCGATGACCGGC-A-TAATTGGAAAGACGTCACGCCG-G-AATATTG-GGACGAC-CGTCAGAACA--CCAACCTGCGCCACCA-GTTCTTCGCGATTCAGGCCGTGGCCCCTGC-GAT-GATCGCGGCGGGCAAGGGCTCCATCATCAAC-ATGGGCTCCA----ATTCCTGG--TGGGAGGCGGGCGGCG-GT--TTCCCGGC-CT-A-CGCCACCGCCAAATCC-GC-CG-CCCATGGGCT-GA-C--CCG-CACCAT-GGC-CCGC-G-A-CCTTG-GCCCCCAC-CG--C-ATCCGCGTGAACACGATTGT-GCCA-GGCTGGATCATGACCGACCGCCAAAGGGAGCTGTGGG----T-GACG-G-AAGAGGC--CC-T-GGAC-GC-CCAACTCAAG-CG-CC-AG-T-G-CCTGCCAGACCCCATCG-ACCCGGTCTACGTCGT-GCGCATGGC-GCTGTTTCTG-GCCTCCGACGACG-CGGCGATGTGTTCGGC-CAACAATTACATGGTGGAAGCGGGCTCGATCTGACGATGCTATGACAAGTATCGTGCGGAGCCCAAGTCGCGGATGACGGGCTG-ATCTGACGCGCAAGACGCGACGCCGCATCTCTGACGTCT--GGGCGGGCTGT--GGCGTGAACCA--CGTG-GCG-GT-TCAGG-G--GCCGTCGCTTTTACGACCCGTCATGTCCCGACCGTGGGTTTCGGA-CC--CTAAGCGGCCATCGCTGCAACGGGCTCCACCCAGACCTGCGCGCCTTCAAACATCGCGCTGTGGCCCGGCGGCA-GCTCGGTCCATCCGCCCTGCCC--C-AC-CTCCAGCGGCTCCGAGACGACGGCCCATCCCGTCCGGCTTTTGCTCCAGCGATAATATACGGACGGCGCGATGTGATCTGAACTGAGGCGCAGCGCATAGAGCCGTGTTCCATCACTCCACGCCGCAGAGC-TGCGCAGATGG-GGCGTTGTGCCGGT-CTCC-CGCGA-CATCTGCTCCA-GCCTGCGGTGGGCTAGCAGGACGGCGCCGATCGGGTCCGCCTCCAGTCCAAAATCCAACGCGTACAGGAACAGCAATTCACTATCCGTCGCGCCT-TTG-CGGTGGGCATAAAGCGGATCGGACACGCCCATATCGGCCCGCCGCCGGAACCGATCAAAGCCGCCGATCTGACCATTGTGCATGAAACTCCACCGC-CCATGGGCGAAGGGGTGGCAATTGTTGCGGCTGGTCGCGGCCCCGGTGGAGGCGCGGACATGGGACAGAAAGGCGTGGCTTTTCAAGGTCCGCGCGAGCGAGGCGAGGTTTGGGTCCGACCACGCCGGGAAGACAT-CCC-GGTAGAG-GCCCGGATCGGGCCGGTCGCCA-TACCACGCGACGCCGAAGCCATCGGCGTTGATCGCTGTCTTGCATTCGGTCGCGGCGCGGCTTTGGTCAATCAAGGAATG-CCCGGGCGCGGTTAATAATTCCTCAAGATAGATCGCCTGGCCCA-GATACGCGGCCCA-CCGACACATTCACGCGCCCCGGTTGTGGGTCTTGGCGTAGA-GATCCGCAATGAT--CCG-GCTAGCGG-TC-T--TTTCAAACAG-GCACGGGA-TCAGCGCATGGACCGC-CGCAGCCCCCGCCG-CAAGAAAGAGTTTACCG-CTGAACTTTCCTGC-AAAC-GCCATATGCTCAAGGAAACTCTCGTCCACGGTTGCAGGGTGGTCGAGGAAGATGCGGCGGATCATG-GCGGGCTCCTGTGGTTGGGTTTTGGGCAGAGTGCCATGGGTGCCATGGGCATAGCT-CCCAAATATAGCGCTGTTTGGCCGTGACATGTGGAAGACTT-CCCACCATATTGCTGTC-A--T-GAC-AAATC-TTGAC-C--CAACAGACGCCCGTATCCTCGCCCATTTGCAACGCCGCTGTGATGAGCCGTTGGAGGAGCTTGGCCACCACGTCGGCCTGT-CGCGCA-ATGCGGTGTG-GCGGCGG--GTGAAGGCGTTG-GAAGAGCGCGGGGTGCTGACAGGTCGTGTGGCCGTCGTGGATCCTGTGGCCGTGGGTCTTGGCCTG-ATGGTGTTCATTCA-AGTCCGCGCGGCGCATCATTCGGCGGATTGG-CTGGA--GCAGTTTC-GCCGTGCCGTTCGCGCGATGCCGGAGATTTTGG-GCGTTTACCGCATGACCGGCGATCTG--GAT-T-ACTTGATCCGCGCC-C-GT-GTGGCCGATGTGGCG-GATTACGACCGGCTCTATCAGC-GGCTCATTGATCGGGTC--G-AAA--TG-GGCG-ACGTCTCGGCCAGTTTC-GT-GATG--GAGGAGTTGA--AGG--A-GGG-C-AGC-G---CGCTGCCCCTGTGATTTCGTC-GC-GCG--GGTATATCAATCGTATAT-CAATTGC-C-GACATGGGGTCCCAGCACAGG--GTC-CCAGAGCGCGGGGTAGATCAATGGTAGATCAATTT-G-CCCCGCACGTCCCGGGCCAGGC-GTCACGCATTCACGTCGACGACAACACGGCCCCGAACACCGCCCTTGAGGATGGCGCGACCAAGATCCGGCAGATCGGACAGCGTCGCGGGCACGACCATGGCCTCCAACTTGCCCATCGGCAGATCCTTGGCGAGGAAATTCCACGCGCGCACCCGGTTGTCATAGGGCTGCATGACGCTGTCGATGCCAAGAAGGTTTACGCCGCGCAGAAGGAACGGGATCACCGTCGCCGGAAGGCCCGCGCCGCCCGCCAGACCCACCGCCGCGACGGAGCCGCCGTATTTCATCTGCCCCAACACCCGCGCCAGCATGTCGCCGCCCACGGCATCGACGCATCCGGCCCAGGTCTCGGCCTCCAGCGGGCGTTTGACCGTCTCGTTGATCTCTTCGCGGGCGACGATGCGGGTGGCCCCCAGCGACTTCAGGTAGTCCTCCTGCTCGGGTCGGCCTGTTACTGCCGCGACCTCATGACCGAAATTGGCCAGGATCGCTGTGGCAACGGACCCGACGCCGCCAGCCGCGCCGGTCACCAGAACCTCCCCCTG-ATCGGGCTTCAATCCGTGGTCCTCCAGCGCCATGATCGCCAGCATCGCGGTGAAACCTGCGGTGCCAATGGCCATCGCCTGCCGCGTCGTCAGACCCTCGGGCAGCGGCACCAGCCAATCGGCCTTCACGCGGGCTTTCTGGGCATAGCCGCCCCAGTGCATCTCCCCCACGCGCCATCCGGTCAGCACGACCTTGTCGCCGGGTTTGTAGCGGTCATCGTCGGACGTCTCTACGGTGCCCGCGAAATCAATGCCCGGCACGTGGGGATATTTGCGAACCAACCCGCCACCGGGGCCGACGCAGAGCCCGTCCTTATAGTTTAACGTTGAATAGTCGACGGCGACCGTCACATTGCCGCCATCCTCAAACGTGGGCAGGCGGTCTTCGGATATGGCTTCGACAGAGGCG-CTGGTCTTGCCCTCATCAT-TTTTCTCAACGACCAATGCATTGAACGTCATCGCGTCTCTC"
-	score_dict = score_sequence(seq.replace("-",""),phmm_dict)
-	with open('conserved_region_scores.pickle', 'wb') as f:
-		pickle.dump(score_dict, f)
-
-
-
-
-
-start_time = time.time()
-run_validation()
-print("--- %s seconds ---" % (time.time() - start_time))
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-start_time = time.time()
-
-unsorted_gene_list = create_unsorted_gene_list()
-gene_dict = create_gene_dict(unsorted_gene_list)
-phmm_dict = create_pHMMs(gene_dict)
-
-possible_gene = []
-
-for i in range(2):
-	maxkey = keywithmaxval(score_dict)
-	maxscore = score_dict[keywithmaxval(score_dict)]
-	possible_gene.append((maxkey,maxscore))
-	del score_dict[maxkey]
-
-print(possible_gene)
-'''
